@@ -106,12 +106,7 @@ def chars_to_labelled_samples(text: str, char_to_idx: dict, seq_len: int, device
     #  Note that no explicit loops are required to implement this function.
     samples_chars = [text[i * seq_len:(i + 1) * seq_len] for i in range(len(text) // seq_len)]
     labels_chars = [text[i * seq_len + 1:(i + 1) * seq_len + 1] for i in range(len(text) // seq_len)]
-    # print(len(samples_chars), samples_chars[0], chars_to_onehot(samples_chars[0], char_to_idx))
-    a = list(map(lambda seq: chars_to_onehot(seq, char_to_idx), samples_chars))
-    # print(a)
-    # print(torch.tensor([a]))
     samples = torch.stack(list(map(lambda seq: chars_to_onehot(seq, char_to_idx).to(device), samples_chars)))
-
     def seq_to_labels(seq):
         return torch.tensor(list(map(lambda x: char_to_idx.get(x), list(seq))), device=device)
 
@@ -129,10 +124,9 @@ def hot_softmax(y, dim=0, temperature=1.0):
     :return: Softmax computed with the temperature parameter.
     """
     # TODO: Implement based on the above.
-    # ====== YOUR CODE: ======
-    raise NotImplementedError()
-    # ========================
-    return result
+    yt = y / temperature
+    softmax = nn.Softmax(dim=dim)
+    return softmax(yt)
 
 
 def generate_from_model(model, start_sequence, n_chars, char_maps, T):
@@ -165,9 +159,18 @@ def generate_from_model(model, start_sequence, n_chars, char_maps, T):
     #  Note that tracking tensor operations for gradient calculation is not
     #  necessary for this. Best to disable tracking for speed.
     #  See torch.no_grad().
-    # ====== YOUR CODE: ======
-    raise NotImplementedError()
-    # ========================
+    with torch.no_grad():
+        y, h_s = chars_to_onehot(start_sequence, char_to_idx).unsqueeze(0), None
+    for i in range(n_chars - len(start_sequence)):
+        #print(y.shape)
+        y_out, h_s = model(y.to(dtype=torch.float), h_s)
+        #print(y_out.shape)
+        #y = y_out[:, -1:, :]
+        char = idx_to_char.get(torch.multinomial(hot_softmax(y_out[0][-1], temperature=T), num_samples=1).item())
+        sample = chars_to_onehot(char, char_to_idx)
+        y = sample.unsqueeze(0)
+        #char = idx_to_char.get(torch.argmax(y[0][-1]).item())
+        out_text += char
 
     return out_text
 
@@ -188,7 +191,6 @@ class SequenceBatchSampler(torch.utils.data.Sampler):
         self.dataset = dataset
         self.batch_size = batch_size
 
-
     def __iter__(self) -> Iterator[int]:
         # TODO:
         #  Return an iterator of indices, i.e. numbers in range(len(dataset)).
@@ -208,6 +210,65 @@ class SequenceBatchSampler(torch.utils.data.Sampler):
 
     def __len__(self):
         return len(self.dataset) - len(self.dataset) % self.batch_size
+
+
+class GRULayer(nn.Module):
+    """
+    Represents a multi-layer GRU (gated recurrent unit) model.
+    """
+
+    def __init__(self, in_dim, out_dim, dropout=0):
+        """
+        :param in_dim: Number of input dimensions (at each timestep).
+        :param h_dim: Number of hidden state dimensions.
+        :param out_dim: Number of input dimensions (at each timestep).
+        :param dropout: Level of dropout to apply between layers. Zero
+        disables.
+        """
+        super().__init__()
+        assert in_dim > 0 and out_dim > 0
+
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.layer_params = []
+
+        self.add_module('Linear_Wxz', nn.Linear(in_features=in_dim, out_features=out_dim, bias=True))
+        self.add_module('Linear_Wxr', nn.Linear(in_features=in_dim, out_features=out_dim, bias=False))
+        self.add_module('Linear_Wxg', nn.Linear(in_features=in_dim, out_features=out_dim, bias=True))
+        self.add_module('Linear_Whz', nn.Linear(in_features=out_dim, out_features=out_dim, bias=False))
+        self.add_module('Linear_Whr', nn.Linear(in_features=out_dim, out_features=out_dim, bias=True))
+        self.add_module('Linear_Whg', nn.Linear(in_features=out_dim, out_features=out_dim, bias=False))
+
+    def forward(self, input: Tensor, hidden_state: Tensor):
+        """
+        :param input: Batch of sequences. Shape should be (B, S, I) where B is
+        the batch size, S is the length of each sequence and I is the
+        input dimension (number of chars in the case of a char RNN).
+        :param hidden_state: Initial hidden state (for the first
+        char). Shape should be (B, H) where B is the batch size
+        and H is the number of hidden dimensions.
+        :return: The layer_output tensor is the output of the last RNN layer,
+        of shape (B, S, H)  as above.
+        """
+        batch_size, seq_len, _ = input.shape
+
+        layer_input = input
+        layer_states = []
+
+        h = hidden_state
+        sigmoid = nn.Sigmoid()
+        tanh = nn.Tanh()
+
+        for char in range(seq_len):
+            # print(layer_input[:, char, :].shape)
+            # print(self.Linear_Wxz)
+            # print(self.Linear_Wxz(layer_input[:, char, :]))
+            z = sigmoid(self.Linear_Wxz(layer_input[:, char, :]) + self.Linear_Whz(h))
+            r = sigmoid(self.Linear_Wxr(layer_input[:, char, :]) + self.Linear_Whr(h))
+            g = tanh(self.Linear_Wxg(layer_input[:, char, :]) + self.Linear_Whg(r * h))
+            h = z * h + (1 - z) * g
+            layer_states.append(h)
+        return torch.stack(layer_states, dim=1)
 
 
 class MultilayerGRU(nn.Module):
@@ -248,9 +309,13 @@ class MultilayerGRU(nn.Module):
         #    - If you use tensors directly, wrap them in nn.Parameter() and
         #      then call self.register_parameter() on them. Also make
         #      sure to initialize them. See functions in torch.nn.init.
-        # ====== YOUR CODE: ======
-        raise NotImplementedError()
-        # ========================
+        self.layers = []
+        for i in range(n_layers):
+            layer_in_dim = in_dim if i == 0 else h_dim
+            layer = GRULayer(in_dim=layer_in_dim, out_dim=h_dim, dropout=dropout)
+            self.add_module('Layer{}'.format(i), layer)
+            self.layers.append(layer)
+        self.add_module('Linear_Why', nn.Linear(in_features=h_dim, out_features=out_dim, bias=True))
 
     def forward(self, input: Tensor, hidden_state: Tensor = None):
         """
@@ -268,7 +333,6 @@ class MultilayerGRU(nn.Module):
         (B, L, H) as above.
         """
         batch_size, seq_len, _ = input.shape
-
         layer_states = []
         for i in range(self.n_layers):
             if hidden_state is None:
@@ -279,14 +343,17 @@ class MultilayerGRU(nn.Module):
                 layer_states.append(hidden_state[:, i, :])
 
         layer_input = input
-        layer_output = None
 
         # TODO:
         #  Implement the model's forward pass.
         #  You'll need to go layer-by-layer from bottom to top (see diagram).
         #  Tip: You can use torch.stack() to combine multiple tensors into a
         #  single tensor in a differentiable manner.
-        # ====== YOUR CODE: ======
-        raise NotImplementedError()
-        # ========================
-        return layer_output, hidden_state
+
+        final_h = []
+        for i, layer in enumerate(self.layers):
+            layer_input = layer(layer_input, layer_states[i])
+            final_h.append(layer_input[:, -1, :])
+        layer_output = layer_input
+
+        return self.Linear_Why(layer_output), torch.stack(final_h, dim=1)

@@ -6,6 +6,7 @@ import torch
 from typing import Any, Callable
 from pathlib import Path
 from torch.utils.data import DataLoader
+from . import charnn
 
 from cs236781.train_results import FitResult, BatchResult, EpochResult
 
@@ -217,19 +218,14 @@ class Trainer(abc.ABC):
 class RNNTrainer(Trainer):
     def __init__(self, model, loss_fn, optimizer, device=None):
         super().__init__(model, loss_fn, optimizer, device)
+        self.hidden_state = None
 
     def train_epoch(self, dl_train: DataLoader, **kw):
         # TODO: Implement modifications to the base method, if needed.
-        # ====== YOUR CODE: ======
-        raise NotImplementedError()
-        # ========================
+        self.hidden_state = None
         return super().train_epoch(dl_train, **kw)
-
     def test_epoch(self, dl_test: DataLoader, **kw):
         # TODO: Implement modifications to the base method, if needed.
-        # ====== YOUR CODE: ======
-        raise NotImplementedError()
-        # ========================
         return super().test_epoch(dl_test, **kw)
 
     def train_batch(self, batch) -> BatchResult:
@@ -245,9 +241,18 @@ class RNNTrainer(Trainer):
         #  - Backward pass: truncated back-propagation through time
         #  - Update params
         #  - Calculate number of correct char predictions
-        # ====== YOUR CODE: ======
-        raise NotImplementedError()
-        # ========================
+        hidden_state = None if self.hidden_state is None else self.hidden_state.detach()
+        layer_output, hidden_state = self.model(x, hidden_state=hidden_state)
+        self.hidden_state = hidden_state
+        loss = self.loss_fn(layer_output[0], y[0])
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        num_correct = torch.sum(torch.argmax(layer_output[0], dim=1).eq(y[0]))
+        #print(torch.argmax(layer_output[0], dim=1))
+        #if num_correct.item() / seq_len ==1:
+            #print(layer_output[0].shape,  torch.argmax(layer_output[0][0]))
+        #return BatchResult(loss.item(), num_correct)
 
         # Note: scaling num_correct by seq_len because each sample has seq_len
         # different predictions.
@@ -265,9 +270,9 @@ class RNNTrainer(Trainer):
             #  - Forward pass
             #  - Loss calculation
             #  - Calculate number of correct predictions
-            # ====== YOUR CODE: ======
-            raise NotImplementedError()
-            # ========================
+            z = self.model.forward(x)
+            loss = self.loss_fn(z, y)
+            num_correct = torch.sum(torch.argmax(z, dim=1).eq(y)).item()
 
         return BatchResult(loss.item(), num_correct.item() / seq_len)
 
