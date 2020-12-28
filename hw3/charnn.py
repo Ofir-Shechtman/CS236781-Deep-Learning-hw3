@@ -260,9 +260,6 @@ class GRULayer(nn.Module):
         tanh = nn.Tanh()
 
         for char in range(seq_len):
-            # print(layer_input[:, char, :].shape)
-            # print(self.Linear_Wxz)
-            # print(self.Linear_Wxz(layer_input[:, char, :]))
             z = sigmoid(self.Linear_Wxz(layer_input[:, char, :]) + self.Linear_Whz(h))
             r = sigmoid(self.Linear_Wxr(layer_input[:, char, :]) + self.Linear_Whr(h))
             g = tanh(self.Linear_Wxg(layer_input[:, char, :]) + self.Linear_Whg(r * h))
@@ -314,7 +311,10 @@ class MultilayerGRU(nn.Module):
             layer_in_dim = in_dim if i == 0 else h_dim
             layer = GRULayer(in_dim=layer_in_dim, out_dim=h_dim, dropout=dropout)
             self.add_module('Layer{}'.format(i), layer)
-            self.layers.append(layer)
+            dropout_layer = None
+            if dropout:
+                dropout_layer = nn.Dropout2d(p=dropout)
+            self.layers.append((layer, dropout_layer))
         self.add_module('Linear_Why', nn.Linear(in_features=h_dim, out_features=out_dim, bias=True))
 
     def forward(self, input: Tensor, hidden_state: Tensor = None):
@@ -351,8 +351,10 @@ class MultilayerGRU(nn.Module):
         #  single tensor in a differentiable manner.
 
         final_h = []
-        for i, layer in enumerate(self.layers):
+        for i, (layer, dropout) in enumerate(self.layers):
             layer_input = layer(layer_input, layer_states[i])
+            if dropout is not None:
+                layer_input = dropout(layer_input)
             final_h.append(layer_input[:, -1, :])
         layer_output = layer_input
 
