@@ -36,15 +36,15 @@ class Trainer(abc.ABC):
         model.to(self.device)
 
     def fit(
-        self,
-        dl_train: DataLoader,
-        dl_test: DataLoader,
-        num_epochs,
-        checkpoints: str = None,
-        early_stopping: int = None,
-        print_every=1,
-        post_epoch_fn=None,
-        **kw,
+            self,
+            dl_train: DataLoader,
+            dl_test: DataLoader,
+            num_epochs,
+            checkpoints: str = None,
+            early_stopping: int = None,
+            print_every=1,
+            post_epoch_fn=None,
+            **kw,
     ) -> FitResult:
         """
         Trains the model for multiple epochs with a given training set,
@@ -61,6 +61,7 @@ class Trainer(abc.ABC):
         :param post_epoch_fn: A function to call after each epoch completes.
         :return: A FitResult object containing train and test losses per epoch.
         """
+        self.model.train()
         actual_num_epochs = 0
         train_loss, train_acc, test_loss, test_acc = [], [], [], []
 
@@ -85,7 +86,7 @@ class Trainer(abc.ABC):
             verbose = False  # pass this to train/test_epoch.
             if epoch % print_every == 0 or epoch == num_epochs - 1:
                 verbose = True
-            self._print(f"--- EPOCH {epoch+1}/{num_epochs} ---", verbose)
+            self._print(f"--- EPOCH {epoch + 1}/{num_epochs} ---", verbose)
 
             # TODO:
             #  Train & evaluate for one epoch
@@ -93,9 +94,22 @@ class Trainer(abc.ABC):
             #  - Save losses and accuracies in the lists above.
             #  - Implement early stopping. This is a very useful and
             #    simple regularization technique that is highly recommended.
-            # ====== YOUR CODE: ======
-            raise NotImplementedError()
-            # ========================
+            train_result = self.train_epoch(dl_train)
+            train_loss.append(train_result.losses)
+            train_acc.append(train_result.accuracy)
+            test_result = self.train_epoch(dl_test)
+            test_loss.append(test_result.losses)
+            test_acc.append(test_result.accuracy)
+            actual_num_epochs += 1
+
+            if early_stopping and early_stopping <= epochs_without_improvement:
+                break
+            elif best_acc is None or test_result.accuracy >= best_acc:
+                best_acc = test_result.accuracy
+                epochs_without_improvement = 0
+                save_checkpoint = True
+            else:
+                epochs_without_improvement += 1
 
             # Save model checkpoint if requested
             if save_checkpoint and checkpoint_filename is not None:
@@ -106,11 +120,14 @@ class Trainer(abc.ABC):
                 )
                 torch.save(saved_state, checkpoint_filename)
                 print(
-                    f"*** Saved checkpoint {checkpoint_filename} " f"at epoch {epoch+1}"
+                    f"*** Saved checkpoint {checkpoint_filename} " f"at epoch {epoch + 1}"
                 )
 
             if post_epoch_fn:
+                self.model.eval()
                 post_epoch_fn(epoch, train_result, test_result, verbose)
+                self.model.train()
+        self.model.eval()
 
         return FitResult(actual_num_epochs, train_loss, train_acc, test_loss, test_acc)
 
@@ -167,10 +184,10 @@ class Trainer(abc.ABC):
 
     @staticmethod
     def _foreach_batch(
-        dl: DataLoader,
-        forward_fn: Callable[[Any], BatchResult],
-        verbose=True,
-        max_batches=None,
+            dl: DataLoader,
+            forward_fn: Callable[[Any], BatchResult],
+            verbose=True,
+            max_batches=None,
     ) -> EpochResult:
         """
         Evaluates the given forward-function on batches from the given
@@ -224,6 +241,7 @@ class RNNTrainer(Trainer):
         # TODO: Implement modifications to the base method, if needed.
         self.hidden_state = None
         return super().train_epoch(dl_train, **kw)
+
     def test_epoch(self, dl_test: DataLoader, **kw):
         # TODO: Implement modifications to the base method, if needed.
         return super().test_epoch(dl_test, **kw)
@@ -232,7 +250,7 @@ class RNNTrainer(Trainer):
         x, y = batch
         x = x.to(self.device, dtype=torch.float)  # (B,S,V)
         y = y.to(self.device, dtype=torch.long)  # (B,S)
-        seq_len = y.shape[1]
+        num_samples, seq_len = y.shape[0], y.shape[1]
 
         # TODO:
         #  Train the RNN model on one batch of data.
@@ -244,15 +262,13 @@ class RNNTrainer(Trainer):
         hidden_state = None if self.hidden_state is None else self.hidden_state.detach()
         layer_output, hidden_state = self.model(x, hidden_state=hidden_state)
         self.hidden_state = hidden_state
-        loss = self.loss_fn(layer_output[0], y[0])
+        flat_layer_output = layer_output.flatten(start_dim=0, end_dim=1)
+        flat_y = y.flatten(start_dim=0, end_dim=1)
+        loss = self.loss_fn(flat_layer_output, flat_y)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
-        num_correct = torch.sum(torch.argmax(layer_output[0], dim=1).eq(y[0]))
-        #print(torch.argmax(layer_output[0], dim=1))
-        #if num_correct.item() / seq_len ==1:
-            #print(layer_output[0].shape,  torch.argmax(layer_output[0][0]))
-        #return BatchResult(loss.item(), num_correct)
+        num_correct = torch.sum(torch.argmax(flat_layer_output, dim=1).eq(flat_y))
 
         # Note: scaling num_correct by seq_len because each sample has seq_len
         # different predictions.
@@ -282,9 +298,12 @@ class VAETrainer(Trainer):
         x, _ = batch
         x = x.to(self.device)  # Image batch (N,C,H,W)
         # TODO: Train a VAE on one batch.
-        # ====== YOUR CODE: ======
-        raise NotImplementedError()
-        # ========================
+        print(x.shape)
+        xr, mu, log_sigma2 = self.model(x)
+        loss, data_loss, kldiv_loss = self.loss_fn(x, xr, mu, log_sigma2)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
 
         return BatchResult(loss.item(), 1 / data_loss.item())
 
@@ -294,8 +313,10 @@ class VAETrainer(Trainer):
 
         with torch.no_grad():
             # TODO: Evaluate a VAE on one batch.
-            # ====== YOUR CODE: ======
-            raise NotImplementedError()
-            # ========================
+            xr, mu, log_sigma2 = self.model(x)
+            loss, data_loss, kldiv_loss = self.loss_fn(x, xr, mu, log_sigma2)
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
 
         return BatchResult(loss.item(), 1 / data_loss.item())

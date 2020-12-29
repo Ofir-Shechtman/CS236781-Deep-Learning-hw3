@@ -1,13 +1,30 @@
+from typing import List, Union, Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import Tensor, Size
+from torch.nn import ReLU, BatchNorm2d, Conv2d
+from torch.autograd import Variable
+
+
+class EncoderBlock(nn.Module):
+    def __init__(self, channel_in, channel_out):
+        super().__init__()
+        self.conv = nn.Conv2d(in_channels=channel_in, out_channels=channel_out, kernel_size=5, padding=2, stride=2,
+                              bias=False)
+        self.bn = nn.BatchNorm2d(num_features=channel_out, momentum=0.9)
+
+    def forward(self, x):
+        conv = self.conv(x)
+        bn = self.bn(conv)
+        out = F.relu(bn, True)
+        return out
 
 
 class EncoderCNN(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
-
-        modules = []
 
         # TODO:
         #  Implement a CNN. Save the layers in the modules list.
@@ -18,9 +35,14 @@ class EncoderCNN(nn.Module):
         #  least 3 conv layers. You can use any Conv layer parameters,
         #  use pooling or only strides, use any activation functions,
         #  use BN or Dropout, etc.
-        # ====== YOUR CODE: ======
-        raise NotImplementedError()
-        # ========================
+
+        modules = []
+        for channel_in, channel_out in [(in_channels, 64), (64, 128), (128, out_channels)]:
+            modules.append(Conv2d(in_channels=channel_in, out_channels=channel_out,
+                                  kernel_size=5, padding=2, stride=2, bias=False))
+            modules.append(BatchNorm2d(num_features=channel_out, momentum=0.9))
+            modules.append(ReLU())
+
         self.cnn = nn.Sequential(*modules)
 
     def forward(self, x):
@@ -28,7 +50,7 @@ class EncoderCNN(nn.Module):
 
 
 class DecoderCNN(nn.Module):
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels=256, out_channels=32):
         super().__init__()
 
         modules = []
@@ -41,14 +63,53 @@ class DecoderCNN(nn.Module):
         #  (although you can), however the important thing is that the
         #  output should be a batch of images, with same dimensions as the
         #  inputs to the Encoder were.
-        # ====== YOUR CODE: ======
-        raise NotImplementedError()
-        # ========================
+        modules = []
+        for channel_in, channel_out in [(in_channels, in_channels), (in_channels, in_channels//2), (in_channels//2, in_channels//8)]:
+            modules.append(
+                nn.ConvTranspose2d(channel_in, channel_out, kernel_size=5, padding=2, stride=2, output_padding=1,
+                                   bias=False))
+            modules.append(BatchNorm2d(num_features=channel_out, momentum=0.9))
+            modules.append(ReLU())
+        modules.append(nn.Conv2d(in_channels=in_channels//8, out_channels=out_channels, kernel_size=5, stride=1, padding=2))
+
         self.cnn = nn.Sequential(*modules)
 
     def forward(self, h):
         # Tanh to scale to [-1, 1] (same dynamic range as original images).
         return torch.tanh(self.cnn(h))
+
+
+class Unflatten(nn.Module):
+    NamedShape = Tuple[Tuple[str, int]]
+
+    __constants__ = ['dim', 'unflattened_size']
+    dim: Union[int, str]
+    unflattened_size: Union[Size, NamedShape]
+
+    def __init__(self, dim: int, unflattened_size: Size) -> None:
+        super(Unflatten, self).__init__()
+
+        self._require_tuple_int(unflattened_size)
+        self.dim = dim
+        self.unflattened_size = unflattened_size
+
+    def _require_tuple_int(self, input):
+        if (isinstance(input, tuple)):
+            for idx, elem in enumerate(input):
+                if not isinstance(elem, int):
+                    raise TypeError("unflattened_size must be tuple of ints, " +
+                                    "but found element of type {} at pos {}".format(type(elem).__name__, idx))
+            return
+        raise TypeError("unflattened_size must be a tuple of ints, but found type {}".format(type(input).__name__))
+
+    def forward(self, input: Tensor) -> Tensor:
+        t = tuple(zip(['C', 'H', 'W'], self.unflattened_size))
+        tensor = input.unflatten(self.dim, t)
+        tensor = tensor.rename(None)
+        return tensor
+
+    def extra_repr(self) -> str:
+        return 'dim={}, unflattened_size={}'.format(self.dim, self.unflattened_size)
 
 
 class VAE(nn.Module):
@@ -67,11 +128,25 @@ class VAE(nn.Module):
         self.z_dim = z_dim
 
         self.features_shape, n_features = self._check_features(in_size)
-
+        print(self.features_shape, in_size, z_dim)
         # TODO: Add more layers as needed for encode() and decode().
-        # ====== YOUR CODE: ======
-        raise NotImplementedError()
-        # ========================
+        self.encoder_fc = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(in_features=n_features, out_features=1024, bias=False),#self.features_shape[0]
+            nn.BatchNorm1d(num_features=1024, momentum=0.9),
+            nn.ReLU(True)
+        )
+        # print(tuple(zip(self.features_shape, ['C','H', 'W'])))
+        self.decoder_fc = nn.Sequential(
+            nn.Linear(in_features=z_dim, out_features=n_features, bias=False), #z_dim, n_features
+            nn.BatchNorm1d(num_features=n_features, momentum=0.9),
+            nn.ReLU(True),
+            Unflatten(1, self.features_shape)
+        )
+        # two linear to get the mu vector and the diagonal of the log_variance
+        self.l_mu = nn.Linear(in_features=1024, out_features=z_dim)
+        self.l_var = nn.Linear(in_features=1024, out_features=z_dim)
+        self.eval()
 
     def _check_features(self, in_size):
         device = next(self.parameters()).device
@@ -90,9 +165,14 @@ class VAE(nn.Module):
         #  1. Use the features extracted from the input to obtain mu and
         #     log_sigma2 (mean and log variance) of q(Z|x).
         #  2. Apply the reparametrization trick to obtain z.
-        # ====== YOUR CODE: ======
-        raise NotImplementedError()
-        # ========================
+        encode = self.features_encoder(x)
+        h = self.encoder_fc(encode)
+        mu = self.l_mu(h)
+        logvar = self.l_var(h)
+
+        log_sigma2 = torch.exp(logvar * 0.5)
+        sample = Variable(torch.randn(len(x), self.z_dim), requires_grad=True)
+        z = sample * log_sigma2 + mu
 
         return z, mu, log_sigma2
 
@@ -101,10 +181,8 @@ class VAE(nn.Module):
         #  Convert a latent vector back into a reconstructed input.
         #  1. Convert latent z to features h with a linear layer.
         #  2. Apply features decoder.
-        # ====== YOUR CODE: ======
-        raise NotImplementedError()
-        # ========================
-
+        h = self.decoder_fc(z)
+        x_rec = self.features_decoder(h)
         # Scale to [-1, 1] (same dynamic range as original images).
         return torch.tanh(x_rec)
 
@@ -120,9 +198,9 @@ class VAE(nn.Module):
             #  - We'll ignore the sigma2 parameter here:
             #    Instead of sampling from N(psi(z), sigma2 I), we'll just take
             #    the mean, i.e. psi(z).
-            # ====== YOUR CODE: ======
-            raise NotImplementedError()
-            # ========================
+            for _ in range(n):
+                sample = Variable(torch.randn(1, self.z_dim), requires_grad=True)
+                samples.append(self.decode(sample)[0])
 
         # Detach and move to CPU for display purposes
         samples = [s.detach().cpu() for s in samples]
@@ -147,14 +225,15 @@ def vae_loss(x, xr, z_mu, z_log_sigma2, x_sigma2):
         - The KL divergence loss term
     all three are scalars, averaged over the batch dimension.
     """
-    loss, data_loss, kldiv_loss = None, None, None
     # TODO:
     #  Implement the VAE pointwise loss calculation.
     #  Remember:
     #  1. The covariance matrix of the posterior is diagonal.
     #  2. You need to average over the batch dimension.
-    # ====== YOUR CODE: ======
-    raise NotImplementedError()
-    # ========================
 
+    data_loss = torch.mean((x - xr) ** 2) / x_sigma2
+    kl = torch.sum(z_log_sigma2.exp() + torch.pow(z_mu, 2) - z_log_sigma2 - 1, 1)
+    kldiv_loss = torch.mean(kl)
+    loss = data_loss + kldiv_loss
+    #print(f'loss:{loss}, data_loss:{data_loss}, kldiv_loss:{kldiv_loss}')
     return loss, data_loss, kldiv_loss
