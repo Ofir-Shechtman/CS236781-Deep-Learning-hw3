@@ -2,8 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Callable
+
+from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from torch.optim.optimizer import Optimizer
+from . import autoencoder
 
 
 class Discriminator(nn.Module):
@@ -18,9 +21,31 @@ class Discriminator(nn.Module):
         #  section or implement something new.
         #  You can then use either an affine layer or another conv layer to
         #  flatten the features.
-        # ====== YOUR CODE: ======
-        raise NotImplementedError()
-        # ========================
+
+        modules = []
+
+        modules.append(nn.Conv2d(in_channels=3, out_channels=32, kernel_size=5, stride=1, padding=2))
+        modules.append(nn.ReLU(inplace=True))
+        for channel_in, channel_out in [(32, 128), (128, 256), (256, 256)]:
+            modules.append(nn.Conv2d(in_channels=channel_in, out_channels=channel_out,
+                                  kernel_size=5, padding=2, stride=2, bias=False))
+            modules.append(nn.BatchNorm2d(num_features=channel_out, momentum=0.9))
+            modules.append(nn.ReLU())
+
+        with torch.no_grad():
+            x = torch.randn(1, *in_size)
+            h = nn.Sequential(*modules)(x)
+            n_features = torch.numel(h) // h.shape[0]
+
+        modules.append(nn.Flatten())
+        modules.append(nn.Linear(in_features=n_features, out_features=512, bias=False))
+        modules.append(nn.BatchNorm1d(num_features=512, momentum=0.9))
+        modules.append(nn.ReLU(True))
+        modules.append(nn.Linear(in_features=512, out_features=1))
+
+        self.conv = nn.Sequential(*modules)
+        self.eval()
+
 
     def forward(self, x):
         """
@@ -31,10 +56,8 @@ class Discriminator(nn.Module):
         # TODO: Implement discriminator forward pass.
         #  No need to apply sigmoid to obtain probability - we'll combine it
         #  with the loss due to improved numerical stability.
-        # ====== YOUR CODE: ======
-        raise NotImplementedError()
-        # ========================
-        return y
+        y = self.conv(x)
+        return torch.sigmoid(y)
 
 
 class Generator(nn.Module):
@@ -47,14 +70,22 @@ class Generator(nn.Module):
         """
         super().__init__()
         self.z_dim = z_dim
+        features_shape = torch.Size((256, 8, 8))
+        n_features = torch.FloatTensor(features_shape).numel()
+        print(features_shape, n_features)
 
         # TODO: Create the generator model layers.
         #  To combine image features you can use the DecoderCNN from the VAE
         #  section or implement something new.
         #  You can assume a fixed image size.
-        # ====== YOUR CODE: ======
-        raise NotImplementedError()
-        # ========================
+        self.decoder = autoencoder.DecoderCNN(in_channels=features_shape[0], out_channels=out_channels)
+        self.decoder_fc = nn.Sequential(
+            nn.Linear(in_features=z_dim, out_features=n_features, bias=False),  # z_dim, n_features
+            nn.BatchNorm1d(num_features=n_features, momentum=0.9),
+            nn.ReLU(True),
+            autoencoder.Unflatten(1, features_shape)
+        )
+        self.eval()
 
     def sample(self, n, with_grad=False):
         """
@@ -69,9 +100,12 @@ class Generator(nn.Module):
         # TODO: Sample from the model.
         #  Generate n latent space samples and return their reconstructions.
         #  Don't use a loop.
-        # ====== YOUR CODE: ======
-        raise NotImplementedError()
-        # ========================
+        samples = Variable(torch.randn(n, self.z_dim), requires_grad=with_grad)
+        if with_grad:
+            samples = self.forward(samples)
+        else:
+            with torch.no_grad():
+                samples = self.forward(samples)
         return samples
 
     def forward(self, z):
@@ -83,10 +117,11 @@ class Generator(nn.Module):
         # TODO: Implement the Generator forward pass.
         #  Don't forget to make sure the output instances have the same
         #  dynamic range as the original (real) images.
-        # ====== YOUR CODE: ======
-        raise NotImplementedError()
-        # ========================
-        return x
+        #print(f'z:{z.shape}')
+        h = self.decoder_fc(z)
+        #print(f'h:{h.shape}')
+        x = self.decoder(h)
+        return torch.tanh(x)
 
 
 def discriminator_loss_fn(y_data, y_generated, data_label=0, label_noise=0.0):
@@ -108,9 +143,35 @@ def discriminator_loss_fn(y_data, y_generated, data_label=0, label_noise=0.0):
     # TODO:
     #  Implement the discriminator loss.
     #  See pytorch's BCEWithLogitsLoss for a numerically stable implementation.
-    # ====== YOUR CODE: ======
-    raise NotImplementedError()
-    # ========================
+    if data_label:
+        if label_noise:
+            r1, r2 = 1-label_noise, 1+label_noise
+            print(r1, r2, (r2-r1))
+            labels = torch.rand(len(y_data)) * (r2-r1) + r1
+            m = torch.distributions.uniform.Uniform(r1, r2)
+            labels = m.sample(y_data.shape)
+        else:
+            labels = torch.ones_like(y_data)
+    else:
+        if label_noise:
+            r1, r2 = 0-label_noise, 0+label_noise
+            labels = torch.rand(len(y_data)) * (r2-r1) + r1
+            m = torch.distributions.uniform.Uniform(r1, r2)
+            labels = m.sample(y_data.shape)
+        else:
+            labels = torch.zeros_like(y_data)
+    print(labels)
+
+    bce_data = nn.BCEWithLogitsLoss()
+    bce_gen = nn.BCEWithLogitsLoss()
+
+    loss_data = bce_data(y_data, Variable(labels))
+    r1, r2 = 0-label_noise, 0+label_noise
+    print(Variable(torch.rand(len(y_generated)) * (r2-r1) + r1))
+    m = torch.distributions.uniform.Uniform(r1, r2)
+    labels = m.sample(y_data.shape)
+    loss_generated = bce_gen(y_generated, Variable(torch.zeros_like(y_generated)))
+
     return loss_data + loss_generated
 
 
@@ -129,9 +190,13 @@ def generator_loss_fn(y_generated, data_label=0):
     #  Implement the Generator loss.
     #  Think about what you need to compare the input to, in order to
     #  formulate the loss in terms of Binary Cross Entropy.
-    # ====== YOUR CODE: ======
-    raise NotImplementedError()
-    # ========================
+    if data_label:
+        labels = torch.ones_like(y_generated)
+    else:
+        labels = torch.zeros_like(y_generated)
+
+    bce = nn.BCEWithLogitsLoss()
+    loss = bce(y_generated, Variable(labels))
     return loss
 
 
