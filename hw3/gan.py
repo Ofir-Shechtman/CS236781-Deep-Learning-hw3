@@ -85,7 +85,6 @@ class Generator(nn.Module):
             nn.ReLU(True),
             autoencoder.Unflatten(1, features_shape)
         )
-        self.eval()
 
     def sample(self, n, with_grad=False):
         """
@@ -121,7 +120,7 @@ class Generator(nn.Module):
         h = self.decoder_fc(z)
         #print(f'h:{h.shape}')
         x = self.decoder(h)
-        return torch.tanh(x)
+        return x
 
 
 def discriminator_loss_fn(y_data, y_generated, data_label=0, label_noise=0.0):

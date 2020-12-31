@@ -61,7 +61,6 @@ class Trainer(abc.ABC):
         :param post_epoch_fn: A function to call after each epoch completes.
         :return: A FitResult object containing train and test losses per epoch.
         """
-        self.model.train()
         actual_num_epochs = 0
         train_loss, train_acc, test_loss, test_acc = [], [], [], []
 
@@ -95,10 +94,10 @@ class Trainer(abc.ABC):
             #  - Implement early stopping. This is a very useful and
             #    simple regularization technique that is highly recommended.
             train_result = self.train_epoch(dl_train)
-            train_loss.append(train_result.losses)
+            train_loss.extend(train_result.losses)
             train_acc.append(train_result.accuracy)
-            test_result = self.train_epoch(dl_test)
-            test_loss.append(test_result.losses)
+            test_result = self.test_epoch(dl_test)
+            test_loss.extend(test_result.losses)
             test_acc.append(test_result.accuracy)
             actual_num_epochs += 1
 
@@ -124,10 +123,7 @@ class Trainer(abc.ABC):
                 )
 
             if post_epoch_fn:
-                self.model.eval()
                 post_epoch_fn(epoch, train_result, test_result, verbose)
-                self.model.train()
-        self.model.eval()
 
         return FitResult(actual_num_epochs, train_loss, train_acc, test_loss, test_acc)
 
@@ -298,8 +294,9 @@ class VAETrainer(Trainer):
         x, _ = batch
         x = x.to(self.device)  # Image batch (N,C,H,W)
         # TODO: Train a VAE on one batch.
+        #print(x.shape)
         xr, mu, log_sigma2 = self.model(x)
-        loss, data_loss, kldiv_loss = self.loss_fn(x, xr, mu, log_sigma2)
+        loss, data_loss, _ = self.loss_fn(x, xr, mu, log_sigma2)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
@@ -313,9 +310,6 @@ class VAETrainer(Trainer):
         with torch.no_grad():
             # TODO: Evaluate a VAE on one batch.
             xr, mu, log_sigma2 = self.model(x)
-            loss, data_loss, kldiv_loss = self.loss_fn(x, xr, mu, log_sigma2)
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
+            loss, data_loss, _ = self.loss_fn(x, xr, mu, log_sigma2)
 
         return BatchResult(loss.item(), 1 / data_loss.item())

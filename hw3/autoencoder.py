@@ -64,52 +64,37 @@ class DecoderCNN(nn.Module):
         #  output should be a batch of images, with same dimensions as the
         #  inputs to the Encoder were.
         modules = []
-        for channel_in, channel_out in [(in_channels, in_channels), (in_channels, in_channels//2), (in_channels//2, in_channels//8)]:
+        for channel_in, channel_out in [(in_channels, in_channels), (in_channels, in_channels//2), (in_channels//2, in_channels//4)]:
             modules.append(
                 nn.ConvTranspose2d(channel_in, channel_out, kernel_size=5, padding=2, stride=2, output_padding=1,
                                    bias=False))
             modules.append(BatchNorm2d(num_features=channel_out, momentum=0.9))
             modules.append(ReLU())
-        modules.append(nn.Conv2d(in_channels=in_channels//8, out_channels=out_channels, kernel_size=5, stride=1, padding=2))
+        modules.append(nn.Conv2d(in_channels=in_channels//4, out_channels=out_channels, kernel_size=5, stride=1, padding=2))
+        modules.append(nn.Tanh())
 
         self.cnn = nn.Sequential(*modules)
 
     def forward(self, h):
         # Tanh to scale to [-1, 1] (same dynamic range as original images).
-        return torch.tanh(self.cnn(h))
+        return self.cnn(h)
 
 
 class Unflatten(nn.Module):
-    NamedShape = Tuple[Tuple[str, int]]
-
-    __constants__ = ['dim', 'unflattened_size']
-    dim: Union[int, str]
-    unflattened_size: Union[Size, NamedShape]
-
-    def __init__(self, dim: int, unflattened_size: Size) -> None:
+    def __init__(self, unflattened_size: Size) -> None:
         super(Unflatten, self).__init__()
-
-        self._require_tuple_int(unflattened_size)
-        self.dim = dim
+        #self.dim = dim
         self.unflattened_size = unflattened_size
 
-    def _require_tuple_int(self, input):
-        if (isinstance(input, tuple)):
-            for idx, elem in enumerate(input):
-                if not isinstance(elem, int):
-                    raise TypeError("unflattened_size must be tuple of ints, " +
-                                    "but found element of type {} at pos {}".format(type(elem).__name__, idx))
-            return
-        raise TypeError("unflattened_size must be a tuple of ints, but found type {}".format(type(input).__name__))
-
     def forward(self, input: Tensor) -> Tensor:
-        t = tuple(zip(['C', 'H', 'W'], self.unflattened_size))
-        tensor = input.unflatten(self.dim, t)
-        tensor = tensor.rename(None)
-        return tensor
+
+        #t = tuple(zip(['C', 'H', 'W'], self.unflattened_size))
+        #tensor = input.unflatten(self.dim, t)
+        #tensor = tensor.rename(None)
+        return input.view(len(input), *self.unflattened_size)
 
     def extra_repr(self) -> str:
-        return 'dim={}, unflattened_size={}'.format(self.dim, self.unflattened_size)
+        return 'unflattened_size={}'.format(self.unflattened_size)
 
 
 class VAE(nn.Module):
@@ -128,7 +113,7 @@ class VAE(nn.Module):
         self.z_dim = z_dim
 
         self.features_shape, n_features = self._check_features(in_size)
-        print(self.features_shape, in_size, z_dim)
+        #print(self.features_shape, in_size, z_dim)
         # TODO: Add more layers as needed for encode() and decode().
         self.encoder_fc = nn.Sequential(
             nn.Flatten(),
@@ -141,7 +126,7 @@ class VAE(nn.Module):
             nn.Linear(in_features=z_dim, out_features=n_features, bias=False), #z_dim, n_features
             nn.BatchNorm1d(num_features=n_features, momentum=0.9),
             nn.ReLU(True),
-            Unflatten(1, self.features_shape)
+            Unflatten(self.features_shape)
         )
         # two linear to get the mu vector and the diagonal of the log_variance
         self.l_mu = nn.Linear(in_features=1024, out_features=z_dim)
@@ -188,7 +173,6 @@ class VAE(nn.Module):
 
     def sample(self, n):
         samples = []
-        device = next(self.parameters()).device
         with torch.no_grad():
             # TODO:
             #  Sample from the model. Generate n latent space samples and
@@ -198,12 +182,15 @@ class VAE(nn.Module):
             #  - We'll ignore the sigma2 parameter here:
             #    Instead of sampling from N(psi(z), sigma2 I), we'll just take
             #    the mean, i.e. psi(z).
+            self.eval()
             for _ in range(n):
                 sample = Variable(torch.randn(1, self.z_dim), requires_grad=True)
                 samples.append(self.decode(sample)[0])
+            self.train()
 
         # Detach and move to CPU for display purposes
         samples = [s.detach().cpu() for s in samples]
+
         return samples
 
     def forward(self, x):
