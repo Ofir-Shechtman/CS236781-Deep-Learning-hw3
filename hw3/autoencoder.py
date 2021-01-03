@@ -8,20 +8,6 @@ from torch.nn import ReLU, BatchNorm2d, Conv2d
 from torch.autograd import Variable
 
 
-class EncoderBlock(nn.Module):
-    def __init__(self, channel_in, channel_out):
-        super().__init__()
-        self.conv = nn.Conv2d(in_channels=channel_in, out_channels=channel_out, kernel_size=5, padding=2, stride=2,
-                              bias=False)
-        self.bn = nn.BatchNorm2d(num_features=channel_out, momentum=0.9)
-
-    def forward(self, x):
-        conv = self.conv(x)
-        bn = self.bn(conv)
-        out = F.relu(bn, True)
-        return out
-
-
 class EncoderCNN(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
@@ -76,21 +62,15 @@ class DecoderCNN(nn.Module):
         self.cnn = nn.Sequential(*modules)
 
     def forward(self, h):
-        # Tanh to scale to [-1, 1] (same dynamic range as original images).
         return self.cnn(h)
 
 
 class Unflatten(nn.Module):
     def __init__(self, unflattened_size: Size) -> None:
         super(Unflatten, self).__init__()
-        #self.dim = dim
         self.unflattened_size = unflattened_size
 
     def forward(self, input: Tensor) -> Tensor:
-
-        #t = tuple(zip(['C', 'H', 'W'], self.unflattened_size))
-        #tensor = input.unflatten(self.dim, t)
-        #tensor = tensor.rename(None)
         return input.view(len(input), *self.unflattened_size)
 
     def extra_repr(self) -> str:
@@ -113,7 +93,6 @@ class VAE(nn.Module):
         self.z_dim = z_dim
 
         self.features_shape, n_features = self._check_features(in_size)
-        #print(self.features_shape, in_size, z_dim)
         # TODO: Add more layers as needed for encode() and decode().
         self.encoder_fc = nn.Sequential(
             nn.Flatten(),
@@ -121,7 +100,6 @@ class VAE(nn.Module):
             nn.BatchNorm1d(num_features=1024, momentum=0.9),
             nn.ReLU(True)
         )
-        # print(tuple(zip(self.features_shape, ['C','H', 'W'])))
         self.decoder_fc = nn.Sequential(
             nn.Linear(in_features=z_dim, out_features=n_features, bias=False), #z_dim, n_features
             nn.BatchNorm1d(num_features=n_features, momentum=0.9),
@@ -131,7 +109,6 @@ class VAE(nn.Module):
         # two linear to get the mu vector and the diagonal of the log_variance
         self.l_mu = nn.Linear(in_features=1024, out_features=z_dim)
         self.l_var = nn.Linear(in_features=1024, out_features=z_dim)
-        self.eval()
 
     def _check_features(self, in_size):
         device = next(self.parameters()).device
@@ -168,8 +145,7 @@ class VAE(nn.Module):
         #  2. Apply features decoder.
         h = self.decoder_fc(z)
         x_rec = self.features_decoder(h)
-        # Scale to [-1, 1] (same dynamic range as original images).
-        return torch.tanh(x_rec)
+        return x_rec
 
     def sample(self, n):
         samples = []

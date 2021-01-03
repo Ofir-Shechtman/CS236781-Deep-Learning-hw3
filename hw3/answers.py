@@ -11,14 +11,14 @@ math (delimited with $$).
 
 def part1_rnn_hyperparams():
     hypers = dict(
-        batch_size=0,
-        seq_len=0,
-        h_dim=0,
-        n_layers=0,
-        dropout=0,
-        learn_rate=0.0,
-        lr_sched_factor=0.0,
-        lr_sched_patience=0,
+        batch_size=200,
+        seq_len=50,
+        h_dim=256,
+        n_layers=3,
+        dropout=0.1,
+        learn_rate=0.001,
+        lr_sched_factor=0.9,
+        lr_sched_patience=4,
     )
     # TODO: Set the hyperparameters to train the model.
     # ====== YOUR CODE: ======
@@ -99,7 +99,7 @@ PART2_CUSTOM_DATA_URL = None
 
 def part2_vae_hyperparams():
     hypers = dict(
-        batch_size=53, h_dim=256, z_dim=128, x_sigma2=1, learn_rate=3e-4, betas=(0.9, 0.999),
+        batch_size=53, h_dim=256, z_dim=128, x_sigma2=2, learn_rate=1e-3, betas=(0.9, 0.999),
     )
     # TODO: Tweak the hyperparameters to generate a former president.
 
