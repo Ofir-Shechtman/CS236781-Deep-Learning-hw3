@@ -162,7 +162,7 @@ def generate_from_model(model, start_sequence, n_chars, char_maps, T):
     with torch.no_grad():
         y, h_s = chars_to_onehot(start_sequence, char_to_idx).unsqueeze(0), None
     for i in range(n_chars - len(start_sequence)):
-        y_out, h_s = model(y.to(dtype=torch.float, device=device), h_s.to(device=device))
+        y_out, h_s = model(y.to(dtype=torch.float, device=device), h_s)
         char = idx_to_char.get(torch.multinomial(hot_softmax(y_out[0][-1], temperature=T), num_samples=1).item())
         sample = chars_to_onehot(char, char_to_idx)
         y = sample.unsqueeze(0)
