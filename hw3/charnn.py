@@ -162,14 +162,10 @@ def generate_from_model(model, start_sequence, n_chars, char_maps, T):
     with torch.no_grad():
         y, h_s = chars_to_onehot(start_sequence, char_to_idx).unsqueeze(0), None
     for i in range(n_chars - len(start_sequence)):
-        #print(y.shape)
-        y_out, h_s = model(y.to(dtype=torch.float), h_s)
-        #print(y_out.shape)
-        #y = y_out[:, -1:, :]
+        y_out, h_s = model(y.to(dtype=torch.float, device=device), h_s.to(device=device))
         char = idx_to_char.get(torch.multinomial(hot_softmax(y_out[0][-1], temperature=T), num_samples=1).item())
         sample = chars_to_onehot(char, char_to_idx)
         y = sample.unsqueeze(0)
-        #char = idx_to_char.get(torch.argmax(y[0][-1]).item())
         out_text += char
 
     return out_text
@@ -217,7 +213,7 @@ class GRULayer(nn.Module):
     Represents a multi-layer GRU (gated recurrent unit) model.
     """
 
-    def __init__(self, in_dim, out_dim, dropout=0):
+    def __init__(self, in_dim, out_dim):
         """
         :param in_dim: Number of input dimensions (at each timestep).
         :param h_dim: Number of hidden state dimensions.
@@ -309,7 +305,7 @@ class MultilayerGRU(nn.Module):
         self.layers = []
         for i in range(n_layers):
             layer_in_dim = in_dim if i == 0 else h_dim
-            layer = GRULayer(in_dim=layer_in_dim, out_dim=h_dim, dropout=dropout)
+            layer = GRULayer(in_dim=layer_in_dim, out_dim=h_dim)
             self.add_module('Layer{}'.format(i), layer)
             dropout_layer = None
             if dropout:
