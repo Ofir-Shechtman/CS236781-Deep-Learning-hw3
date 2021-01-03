@@ -98,12 +98,12 @@ class VAE(nn.Module):
             nn.Flatten(),
             nn.Linear(in_features=n_features, out_features=1024, bias=False),#self.features_shape[0]
             nn.BatchNorm1d(num_features=1024, momentum=0.9),
-            nn.ReLU(True)
+            nn.ReLU(False)
         )
         self.decoder_fc = nn.Sequential(
             nn.Linear(in_features=z_dim, out_features=n_features, bias=False), #z_dim, n_features
             nn.BatchNorm1d(num_features=n_features, momentum=0.9),
-            nn.ReLU(True),
+            nn.ReLU(False),
             Unflatten(self.features_shape)
         )
         # two linear to get the mu vector and the diagonal of the log_variance

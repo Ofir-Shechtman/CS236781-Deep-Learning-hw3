@@ -21,9 +21,6 @@ def part1_rnn_hyperparams():
         lr_sched_patience=4,
     )
     # TODO: Set the hyperparameters to train the model.
-    # ====== YOUR CODE: ======
-    raise NotImplementedError()
-    # ========================
     return hypers
 
 
