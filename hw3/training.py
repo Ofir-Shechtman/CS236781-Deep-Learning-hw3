@@ -282,9 +282,14 @@ class RNNTrainer(Trainer):
             #  - Forward pass
             #  - Loss calculation
             #  - Calculate number of correct predictions
-            z = self.model.forward(x)
-            loss = self.loss_fn(z, y)
-            num_correct = torch.sum(torch.argmax(z, dim=1).eq(y)).item()
+
+            hidden_state = None if self.hidden_state is None else self.hidden_state.detach()
+            layer_output, hidden_state = self.model(x, hidden_state=hidden_state)
+            self.hidden_state = hidden_state
+            flat_layer_output = layer_output.flatten(start_dim=0, end_dim=1)
+            flat_y = y.flatten(start_dim=0, end_dim=1)
+            loss = self.loss_fn(flat_layer_output, flat_y)
+            num_correct = torch.sum(torch.argmax(flat_layer_output, dim=1).eq(flat_y))
 
         return BatchResult(loss.item(), num_correct.item() / seq_len)
 
