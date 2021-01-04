@@ -50,19 +50,19 @@ class DecoderCNN(nn.Module):
         #  output should be a batch of images, with same dimensions as the
         #  inputs to the Encoder were.
         modules = []
-        for channel_in, channel_out in [(in_channels, in_channels), (in_channels, in_channels//2), (in_channels//2, in_channels//4)]:
+        for channel_in, channel_out in [(in_channels, in_channels), (in_channels, in_channels//2), (in_channels//2, in_channels//8)]:
             modules.append(
                 nn.ConvTranspose2d(channel_in, channel_out, kernel_size=5, padding=2, stride=2, output_padding=1,
                                    bias=False))
             modules.append(BatchNorm2d(num_features=channel_out, momentum=0.9))
             modules.append(ReLU())
-        modules.append(nn.Conv2d(in_channels=in_channels//4, out_channels=out_channels, kernel_size=5, stride=1, padding=2))
+        modules.append(nn.Conv2d(in_channels=in_channels//8, out_channels=out_channels, kernel_size=5, stride=1, padding=2))
         modules.append(nn.Tanh())
 
         self.cnn = nn.Sequential(*modules)
 
     def forward(self, h):
-        return self.cnn(h)
+        return torch.tanh(self.cnn(h))
 
 
 class Unflatten(nn.Module):
@@ -146,7 +146,7 @@ class VAE(nn.Module):
         #  2. Apply features decoder.
         h = self.decoder_fc(z)
         x_rec = self.features_decoder(h)
-        return x_rec
+        return torch.tanh(x_rec)
 
     def sample(self, n):
         device = next(self.parameters()).device
