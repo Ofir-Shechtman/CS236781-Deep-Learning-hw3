@@ -25,12 +25,34 @@ def part1_rnn_hyperparams():
 
 
 def part1_generation_params():
-    start_seq = ""
-    temperature = 0.0001
+    start_seq = """KING OF FRANCE
+  THE DUKE OF FLORENCE
+  BERTRAM, Count of Rousillon
+  LAFEU, an old lord
+  PAROLLES, a follower of Bertram
+  TWO FRENCH LORDS, serving with Bertram
+
+  STEWARD, Servant to the Countess of Rousillon
+  LAVACHE, a clown and Servant to the Countess of Rousillon
+  A PAGE, Servant to the Countess of Rousillon
+
+  COUNTESS OF ROUSILLON, mother to Bertram
+  HELENA, a gentlewoman protected by the Countess
+  A WIDOW OF FLORENCE.
+  DIANA, daughter to the Widow
+
+  VIOLENTA, neighbour and friend to the Widow
+  MARIANA, neighbour and friend to the Widow
+
+  Lords, Officers, Soldiers, etc., French and Florentine  
+
+SCENE:
+Rousillon; Paris; Florence; Marseilles
+
+ACT I. SCENE 1.
+Rousillon. The COUNT'S palace"""
+    temperature = 0.5
     # TODO: Tweak the parameters to generate a literary masterpiece.
-    # ====== YOUR CODE: ======
-    raise NotImplementedError()
-    # ========================
     return start_seq, temperature
 
 

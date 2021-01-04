@@ -80,6 +80,7 @@ class Trainer(abc.ABC):
                 )
                 self.model.load_state_dict(saved_state["model_state"])
 
+        self.model.train()
         for epoch in range(num_epochs):
             save_checkpoint = False
             verbose = False  # pass this to train/test_epoch.
@@ -93,10 +94,10 @@ class Trainer(abc.ABC):
             #  - Save losses and accuracies in the lists above.
             #  - Implement early stopping. This is a very useful and
             #    simple regularization technique that is highly recommended.
-            train_result = self.train_epoch(dl_train)
+            train_result = self.train_epoch(dl_train, verbose=verbose, **kw)
             train_loss.extend(train_result.losses)
             train_acc.append(train_result.accuracy)
-            test_result = self.test_epoch(dl_test)
+            test_result = self.test_epoch(dl_test, verbose=verbose, **kw)
             test_loss.extend(test_result.losses)
             test_acc.append(test_result.accuracy)
             actual_num_epochs += 1
@@ -240,6 +241,7 @@ class RNNTrainer(Trainer):
 
     def test_epoch(self, dl_test: DataLoader, **kw):
         # TODO: Implement modifications to the base method, if needed.
+        self.hidden_state = None
         return super().test_epoch(dl_test, **kw)
 
     def train_batch(self, batch) -> BatchResult:
@@ -256,8 +258,7 @@ class RNNTrainer(Trainer):
         #  - Update params
         #  - Calculate number of correct char predictions
         hidden_state = None if self.hidden_state is None else self.hidden_state.detach()
-        layer_output, hidden_state = self.model(x, hidden_state=hidden_state)
-        self.hidden_state = hidden_state
+        layer_output, self.hidden_state = self.model(x, hidden_state=hidden_state)
         flat_layer_output = layer_output.flatten(start_dim=0, end_dim=1)
         flat_y = y.flatten(start_dim=0, end_dim=1)
         loss = self.loss_fn(flat_layer_output, flat_y)
@@ -283,9 +284,7 @@ class RNNTrainer(Trainer):
             #  - Loss calculation
             #  - Calculate number of correct predictions
 
-            hidden_state = None if self.hidden_state is None else self.hidden_state.detach()
-            layer_output, hidden_state = self.model(x, hidden_state=hidden_state)
-            self.hidden_state = hidden_state
+            layer_output, self.hidden_state = self.model(x, hidden_state=self.hidden_state)
             flat_layer_output = layer_output.flatten(start_dim=0, end_dim=1)
             flat_y = y.flatten(start_dim=0, end_dim=1)
             loss = self.loss_fn(flat_layer_output, flat_y)

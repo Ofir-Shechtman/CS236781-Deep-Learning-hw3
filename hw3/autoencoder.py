@@ -109,6 +109,7 @@ class VAE(nn.Module):
         # two linear to get the mu vector and the diagonal of the log_variance
         self.l_mu = nn.Linear(in_features=1024, out_features=z_dim)
         self.l_var = nn.Linear(in_features=1024, out_features=z_dim)
+        self.eval()
 
     def _check_features(self, in_size):
         device = next(self.parameters()).device
@@ -133,7 +134,7 @@ class VAE(nn.Module):
         logvar = self.l_var(h)
 
         log_sigma2 = torch.exp(logvar * 0.5)
-        sample = Variable(torch.randn(len(x), self.z_dim), requires_grad=True)
+        sample = Variable(torch.randn(len(x), self.z_dim, device=x.device), requires_grad=True)
         z = sample * log_sigma2 + mu
 
         return z, mu, log_sigma2
@@ -148,6 +149,7 @@ class VAE(nn.Module):
         return x_rec
 
     def sample(self, n):
+        device = next(self.parameters()).device
         samples = []
         with torch.no_grad():
             # TODO:
@@ -160,7 +162,7 @@ class VAE(nn.Module):
             #    the mean, i.e. psi(z).
             self.eval()
             for _ in range(n):
-                sample = Variable(torch.randn(1, self.z_dim), requires_grad=True)
+                sample = Variable(torch.randn(1, self.z_dim, device=device), requires_grad=True)
                 samples.append(self.decode(sample)[0])
             self.train()
 
