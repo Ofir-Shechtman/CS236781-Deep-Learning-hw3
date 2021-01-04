@@ -134,7 +134,7 @@ class VAE(nn.Module):
         logvar = self.l_var(h)
 
         log_sigma2 = torch.exp(logvar * 0.5)
-        sample = Variable(torch.randn(len(x), self.z_dim, device=x.device), requires_grad=True)
+        sample = torch.randn(len(x), self.z_dim, device=x.device)
         z = sample * log_sigma2 + mu
 
         return z, mu, log_sigma2
@@ -162,7 +162,7 @@ class VAE(nn.Module):
             #    the mean, i.e. psi(z).
             self.eval()
             for _ in range(n):
-                sample = Variable(torch.randn(1, self.z_dim, device=device), requires_grad=True)
+                sample = torch.randn(1, self.z_dim, device=device)
                 samples.append(self.decode(sample)[0])
             self.train()
 
