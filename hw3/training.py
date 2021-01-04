@@ -65,6 +65,7 @@ class Trainer(abc.ABC):
         train_loss, train_acc, test_loss, test_acc = [], [], [], []
 
         best_acc = None
+        prev_loss = None
         epochs_without_improvement = 0
 
         checkpoint_filename = None
@@ -102,14 +103,16 @@ class Trainer(abc.ABC):
             test_acc.append(test_result.accuracy)
             actual_num_epochs += 1
 
-            if early_stopping and early_stopping <= epochs_without_improvement:
-                break
-            elif best_acc is None or test_result.accuracy >= best_acc:
+            avg_loss = sum(test_result.losses) / len(test_result.losses)
+            if prev_loss is None or prev_loss >= prev_loss:
                 best_acc = test_result.accuracy
                 epochs_without_improvement = 0
                 save_checkpoint = True
             else:
                 epochs_without_improvement += 1
+                if early_stopping and early_stopping <= epochs_without_improvement:
+                    break
+            prev_loss = avg_loss
 
             # Save model checkpoint if requested
             if save_checkpoint and checkpoint_filename is not None:
