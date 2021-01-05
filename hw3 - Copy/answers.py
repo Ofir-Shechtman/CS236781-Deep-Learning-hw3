@@ -21,69 +21,90 @@ def part1_rnn_hyperparams():
         lr_sched_patience=4,
     )
     # TODO: Set the hyperparameters to train the model.
-    # ====== YOUR CODE: ======
-
-    # ========================
     return hypers
 
 
 def part1_generation_params():
-    start_seq = "ACT I. SCENE 1.\n" \
-                "Rousillon. The COUNT'S palace\n" \
-                "Enter BERTRAM, the COUNTESS OF ROUSILLON, HELENA, and LAFEU, all in black\n" \
-                "COUNTESS. In delivering my son from me, I bury a second husband.\n" \
-                "BERTRAM. And I in going, madam, weep o'er my father's death anew;\n" \
-                "but I must attend his Majesty's command, to whom I am now in\n" \
-                "ward, evermore in subjection.\n" \
-                "LAFEU. You shall find of the King a husband, madam; you, sir, a father\n." \
-                "He that so generally is at all times good must of\n"
+    start_seq = """KING OF FRANCE
+  THE DUKE OF FLORENCE
+  BERTRAM, Count of Rousillon
+  LAFEU, an old lord
+  PAROLLES, a follower of Bertram
+  TWO FRENCH LORDS, serving with Bertram
+
+  STEWARD, Servant to the Countess of Rousillon
+  LAVACHE, a clown and Servant to the Countess of Rousillon
+  A PAGE, Servant to the Countess of Rousillon
+
+  COUNTESS OF ROUSILLON, mother to Bertram
+  HELENA, a gentlewoman protected by the Countess
+  A WIDOW OF FLORENCE.
+  DIANA, daughter to the Widow
+
+  VIOLENTA, neighbour and friend to the Widow
+  MARIANA, neighbour and friend to the Widow
+
+  Lords, Officers, Soldiers, etc., French and Florentine  
+
+SCENE:
+Rousillon; Paris; Florence; Marseilles
+
+ACT I. SCENE 1.
+Rousillon. The COUNT'S palace"""
     temperature = 0.5
     # TODO: Tweak the parameters to generate a literary masterpiece.
-    # ====== YOUR CODE: ======
-
-    # ========================
     return start_seq, temperature
 
 
 part1_q1 = r"""
 **Your answer:**
 
-If we wanted to train on the whole text, we would need to load a matrix with (T,V) dimensions, where T is the size of
-the whole text. It would be a problem to load this matrix into the memory. Further more, if we leave the hidden state
-the same size, it wouldn't be effective, because we would try to use a relativly small matrix to remember the context
-of the whole text. Also, we would argue that the context should be of limited size, because the connections between
-the start of the text and the middle of it is similar to the connection between 2 random texts.
+
+Write your answer using **markdown** and $\LaTeX$:
+```python
+# A code block
+a = 2
+```
+An equation: $e^{i\pi} -1 = 0$
 
 """
 
 part1_q2 = r"""
 **Your answer:**
 
-As we generating the text we send the previous generated text to the model, so the model learns the generated text as we
-are generating it. Meaning it remembers not only the original sequence, but also the text it already generated. 
+
+Write your answer using **markdown** and $\LaTeX$:
+```python
+# A code block
+a = 2
+```
+An equation: $e^{i\pi} -1 = 0$
 
 """
 
 part1_q3 = r"""
 **Your answer:**
 
-The text continues along the batches, so shuffling the batches would cause the model to learn a permutation of the text
-and not the text itself.
+
+Write your answer using **markdown** and $\LaTeX$:
+```python
+# A code block
+a = 2
+```
+An equation: $e^{i\pi} -1 = 0$
 
 """
 
 part1_q4 = r"""
 **Your answer:**
 
-**ANSWER PART 1**
 
-2. using a very high temperature will cause the distribution to be very close to uniform - meaning the probability to draw any sample will be 
-close to equal for each sample. this is not what we want for sampling, because we want the characters which had higher scores to have a higher probability of being samples than the 
-others.
-
-3. using a very low distribution will cause the distribution to be less uniform, meaning the probability for each char to be sampled will be higher
-the higher its score was. this is usefull in the case the class scores were originally very close together - by diving them by a low T,
-the differnces will be more noticeable, causing the softmax function to create higher probabilities for the characters with higher score to be drawn.
+Write your answer using **markdown** and $\LaTeX$:
+```python
+# A code block
+a = 2
+```
+An equation: $e^{i\pi} -1 = 0$
 
 """
 # ==============
@@ -97,10 +118,10 @@ PART2_CUSTOM_DATA_URL = None
 
 def part2_vae_hyperparams():
     hypers = dict(
-        batch_size=50, h_dim=256, z_dim=128, x_sigma2=0.9, learn_rate=3e-4, betas=(0.9, 0.999),)
+        batch_size=50, h_dim=256, z_dim=128, x_sigma2=0.9, learn_rate=3e-4, betas=(0.9, 0.999),
+    )
     # TODO: Tweak the hyperparameters to generate a former president.
-    # ====== YOUR CODE: ======
-    # ========================
+
     return hypers
 
 
