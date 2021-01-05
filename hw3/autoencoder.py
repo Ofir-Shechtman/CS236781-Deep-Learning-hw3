@@ -1,13 +1,16 @@
+from typing import List, Union, Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import Tensor, Size
+from torch.nn import ReLU, BatchNorm2d, Conv2d
+from torch.autograd import Variable
 
 
 class EncoderCNN(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
-
-        modules = []
 
         # TODO:
         #  Implement a CNN. Save the layers in the modules list.
@@ -18,16 +21,14 @@ class EncoderCNN(nn.Module):
         #  least 3 conv layers. You can use any Conv layer parameters,
         #  use pooling or only strides, use any activation functions,
         #  use BN or Dropout, etc.
-        # ====== YOUR CODE: ======
-        hidden_layers = [64, 128, out_channels]
-        for i in range(len(hidden_layers)):
-            if i == 0:
-                modules.append(nn.Conv2d(in_channels, hidden_layers[0], (5, 5), padding=2, stride=2))
-            else:
-                modules.append(nn.Conv2d(hidden_layers[i-1], hidden_layers[i], (5, 5), padding=2, stride=2))
-            modules.append(nn.BatchNorm2d(hidden_layers[i]))
-            modules.append(nn.ReLU())
-        # ========================
+
+        modules = []
+        for channel_in, channel_out in [(in_channels, 64), (64, 128), (128, out_channels)]:
+            modules.append(Conv2d(in_channels=channel_in, out_channels=channel_out,
+                                  kernel_size=5, padding=2, stride=2, bias=False))
+            modules.append(BatchNorm2d(num_features=channel_out, momentum=0.9))
+            modules.append(ReLU())
+
         self.cnn = nn.Sequential(*modules)
 
     def forward(self, x):
@@ -35,7 +36,7 @@ class EncoderCNN(nn.Module):
 
 
 class DecoderCNN(nn.Module):
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels=256, out_channels=32):
         super().__init__()
 
         modules = []
@@ -48,25 +49,32 @@ class DecoderCNN(nn.Module):
         #  (although you can), however the important thing is that the
         #  output should be a batch of images, with same dimensions as the
         #  inputs to the Encoder were.
-        # ====== YOUR CODE: ======
-        hidden_layers = [256, 128, 32]
-        for i in range(len(hidden_layers)):
-            if i == 0:
-                modules.append(nn.ConvTranspose2d(in_channels, hidden_layers[0], (5, 5), padding=2, stride=2,
-                                                  output_padding=1))
-            else:
-                modules.append(nn.ConvTranspose2d(hidden_layers[i - 1], hidden_layers[i], (5, 5), padding=2, stride=2,
-                                                  output_padding=1))
-            modules.append(nn.BatchNorm2d(hidden_layers[i]))
-            modules.append(nn.ReLU())
-        modules.append(nn.Conv2d(32, out_channels, kernel_size=5, padding=2, stride=1))
+        modules = []
+        for channel_in, channel_out in [(in_channels, in_channels), (in_channels, in_channels//2), (in_channels//2, in_channels//4)]:
+            modules.append(
+                nn.ConvTranspose2d(channel_in, channel_out, kernel_size=5, padding=2, stride=2, output_padding=1,
+                                   bias=False))
+            modules.append(BatchNorm2d(num_features=channel_out, momentum=0.9))
+            modules.append(ReLU())
+        modules.append(nn.Conv2d(in_channels=in_channels//4, out_channels=out_channels, kernel_size=5, stride=1, padding=2))
         modules.append(nn.Tanh())
-        # ========================
+
         self.cnn = nn.Sequential(*modules)
 
     def forward(self, h):
-        # Tanh to scale to [-1, 1] (same dynamic range as original images).
-        return torch.tanh(self.cnn(h))
+        return self.cnn(h)
+
+
+class Unflatten(nn.Module):
+    def __init__(self, unflattened_size: Size) -> None:
+        super(Unflatten, self).__init__()
+        self.unflattened_size = unflattened_size
+
+    def forward(self, input: Tensor) -> Tensor:
+        return input.view(len(input), *self.unflattened_size)
+
+    def extra_repr(self) -> str:
+        return 'unflattened_size={}'.format(self.unflattened_size)
 
 
 class VAE(nn.Module):
@@ -85,22 +93,23 @@ class VAE(nn.Module):
         self.z_dim = z_dim
 
         self.features_shape, n_features = self._check_features(in_size)
-
         # TODO: Add more layers as needed for encode() and decode().
-        # ====== YOUR CODE: ======
-        temp_h_dim = 1024
-        self.x_h = nn.Linear(n_features, temp_h_dim, bias=False)
-        self.h_mu = nn.Linear(temp_h_dim, z_dim)
-        self.h_sigma = nn.Linear(temp_h_dim, z_dim)
-        self.z_hwave = nn.Linear(z_dim, n_features, bias=False)
-        self.encoder_batchnorm = nn.BatchNorm1d(temp_h_dim, momentum=0.9)
-        self.decoder_batchnorm = nn.BatchNorm1d(n_features, momentum=0.9)
+        self.encoder_fc = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(in_features=n_features, out_features=1024, bias=False),#self.features_shape[0]
+            nn.BatchNorm1d(num_features=1024, momentum=0.9),
+            nn.ReLU(True)
+        )
+        self.decoder_fc = nn.Sequential(
+            nn.Linear(in_features=z_dim, out_features=n_features, bias=False), #z_dim, n_features
+            nn.BatchNorm1d(num_features=n_features, momentum=0.9),
+            nn.ReLU(True),
+            Unflatten(self.features_shape)
+        )
+        # two linear to get the mu vector and the diagonal of the log_variance
+        self.l_mu = nn.Linear(in_features=1024, out_features=z_dim)
+        self.l_var = nn.Linear(in_features=1024, out_features=z_dim)
         self.eval()
-        self.add_module(f'x_h', self.x_h)
-        self.add_module(f'h_mu', self.h_mu)
-        self.add_module(f'h_sigma', self.h_sigma)
-        self.add_module(f'z_hwave', self.z_hwave)
-        # ========================
 
     def _check_features(self, in_size):
         device = next(self.parameters()).device
@@ -114,46 +123,34 @@ class VAE(nn.Module):
             return h.shape[1:], torch.numel(h) // h.shape[0]
 
     def encode(self, x):
-        device = next(self.parameters()).device
         # TODO:
         #  Sample a latent vector z given an input x from the posterior q(Z|x).
         #  1. Use the features extracted from the input to obtain mu and
         #     log_sigma2 (mean and log variance) of q(Z|x).
         #  2. Apply the reparametrization trick to obtain z.
-        # ====== YOUR CODE: ======
-        encoded = self.features_encoder(x)
-        encoded_flat = torch.flatten(encoded, start_dim=1)
-        h_temp = self.x_h(encoded_flat)
-        h_norm = self.encoder_batchnorm(h_temp)
-        h = nn.ReLU(True)(h_norm)
-        mu = self.h_mu(h)
-        log_sigma2 = self.h_sigma(h)
-        u = torch.randn(x.shape[0], self.z_dim).to(device)
-        z = mu + (torch.exp(log_sigma2) ** 0.5) * u
-        # ========================
+        encode = self.features_encoder(x)
+        h = self.encoder_fc(encode)
+        mu = self.l_mu(h)
+        logvar = self.l_var(h)
 
-        return z, mu, log_sigma2
+        log_sigma2 = torch.exp(logvar * 0.5)
+        sample = torch.randn(len(x), self.z_dim, device=x.device)
+        z = sample * log_sigma2 + mu
+
+        return z, mu, logvar
 
     def decode(self, z):
         # TODO:
         #  Convert a latent vector back into a reconstructed input.
         #  1. Convert latent z to features h with a linear layer.
         #  2. Apply features decoder.
-        # ====== YOUR CODE: ======
-        h_temp = self.z_hwave(z)
-        h_norm = self.decoder_batchnorm(h_temp)
-        h_wave = nn.ReLU(True)(h_norm)
-        size = tuple([h_wave.shape[0]]) + self.features_shape
-        h_wave = h_wave.reshape(size)
-        x_rec = self.features_decoder(h_wave)
-        # ========================
-
-        # Scale to [-1, 1] (same dynamic range as original images).
-        return torch.tanh(x_rec)
+        h = self.decoder_fc(z)
+        x_rec = self.features_decoder(h)
+        return x_rec
 
     def sample(self, n):
-        samples = []
         device = next(self.parameters()).device
+        samples = []
         with torch.no_grad():
             # TODO:
             #  Sample from the model. Generate n latent space samples and
@@ -163,16 +160,15 @@ class VAE(nn.Module):
             #  - We'll ignore the sigma2 parameter here:
             #    Instead of sampling from N(psi(z), sigma2 I), we'll just take
             #    the mean, i.e. psi(z).
-            # ====== YOUR CODE: ======
-            u = torch.randn(n, self.z_dim)
-            u = u.to(device)
-            decoded = self.decode(u)
+            self.eval()
+            sample = torch.randn(n, self.z_dim, device=device)
+            decoded = self.decode(sample)
             for i in range(n):
                 samples.append(decoded[i])
-            # ========================
 
         # Detach and move to CPU for display purposes
         samples = [s.detach().cpu() for s in samples]
+
         return samples
 
     def forward(self, x):
@@ -194,36 +190,15 @@ def vae_loss(x, xr, z_mu, z_log_sigma2, x_sigma2):
         - The KL divergence loss term
     all three are scalars, averaged over the batch dimension.
     """
-    loss, data_loss, kldiv_loss = None, None, None
     # TODO:
     #  Implement the VAE pointwise loss calculation.
     #  Remember:
     #  1. The covariance matrix of the posterior is diagonal.
     #  2. You need to average over the batch dimension.
-    # ====== YOUR CODE: ======
-    batch_size = x.shape[0]
 
-    sigma = torch.exp(z_log_sigma2)
-
-    x_flat = torch.flatten(x, start_dim=1)
-    xr_flat = torch.flatten(xr, start_dim=1)
-
-    data_loss = torch.norm(x_flat - xr_flat) ** 2
-    data_loss = data_loss / (x_sigma2 * x_flat.shape[1])
-
-    kldiv_loss = torch.sum(sigma)
-
-    mu2 = torch.norm(z_mu) ** 2
-    mu2 = torch.sum(mu2)
-
-    z_dim = z_log_sigma2.shape[1]
-
-    logdet = torch.log(sigma)
-    logdet = torch.sum(logdet)
-
-    loss = (data_loss + kldiv_loss + mu2 - logdet) / batch_size - z_dim
-    data_loss = data_loss / batch_size
-    kldiv_loss = kldiv_loss / batch_size
-    # ========================
-
+    data_loss = torch.mean((x - xr) ** 2) / x_sigma2
+    kl = torch.sum(z_log_sigma2.exp() + torch.pow(z_mu, 2) - z_log_sigma2 - 1, 1)
+    kldiv_loss = torch.mean(kl)
+    loss = data_loss + kldiv_loss
+    #print(f'loss:{loss}, data_loss:{data_loss}, kldiv_loss:{kldiv_loss}')
     return loss, data_loss, kldiv_loss
