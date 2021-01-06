@@ -81,7 +81,6 @@ class Trainer(abc.ABC):
                 )
                 self.model.load_state_dict(saved_state["model_state"])
 
-        #self.model.train()
         for epoch in range(num_epochs):
             save_checkpoint = False
             verbose = False  # pass this to train/test_epoch.

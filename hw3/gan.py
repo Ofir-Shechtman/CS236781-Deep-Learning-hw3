@@ -72,7 +72,6 @@ class Generator(nn.Module):
         self.z_dim = z_dim
         features_shape = torch.Size((256, 8, 8))
         n_features = torch.FloatTensor(features_shape).numel()
-        print(features_shape, n_features)
 
         # TODO: Create the generator model layers.
         #  To combine image features you can use the DecoderCNN from the VAE
@@ -83,8 +82,9 @@ class Generator(nn.Module):
             nn.Linear(in_features=z_dim, out_features=n_features, bias=False),  # z_dim, n_features
             nn.BatchNorm1d(num_features=n_features, momentum=0.9),
             nn.ReLU(True),
-            autoencoder.Unflatten(1, features_shape)
+            autoencoder.Unflatten(features_shape)
         )
+        self.eval()
 
     def sample(self, n, with_grad=False):
         """
@@ -99,7 +99,7 @@ class Generator(nn.Module):
         # TODO: Sample from the model.
         #  Generate n latent space samples and return their reconstructions.
         #  Don't use a loop.
-        samples = Variable(torch.randn(n, self.z_dim), requires_grad=with_grad)
+        samples = torch.randn(n, self.z_dim, device=device)
         if with_grad:
             samples = self.forward(samples)
         else:
@@ -145,31 +145,26 @@ def discriminator_loss_fn(y_data, y_generated, data_label=0, label_noise=0.0):
     if data_label:
         if label_noise:
             r1, r2 = 1-label_noise, 1+label_noise
-            print(r1, r2, (r2-r1))
-            labels = torch.rand(len(y_data)) * (r2-r1) + r1
-            m = torch.distributions.uniform.Uniform(r1, r2)
-            labels = m.sample(y_data.shape)
+            #labels = torch.rand(len(y_data)) * (r2-r1) + r1
+            labels = torch.distributions.uniform.Uniform(r1, r2).sample(y_data.shape)
         else:
             labels = torch.ones_like(y_data)
     else:
         if label_noise:
             r1, r2 = 0-label_noise, 0+label_noise
-            labels = torch.rand(len(y_data)) * (r2-r1) + r1
-            m = torch.distributions.uniform.Uniform(r1, r2)
-            labels = m.sample(y_data.shape)
+            #labels = torch.rand(len(y_data)) * (r2-r1) + r1
+            labels = torch.distributions.uniform.Uniform(r1, r2).sample(y_data.shape)
         else:
             labels = torch.zeros_like(y_data)
-    print(labels)
 
     bce_data = nn.BCEWithLogitsLoss()
     bce_gen = nn.BCEWithLogitsLoss()
 
-    loss_data = bce_data(y_data, Variable(labels))
+    loss_data = bce_data(y_data, labels)
     r1, r2 = 0-label_noise, 0+label_noise
-    print(Variable(torch.rand(len(y_generated)) * (r2-r1) + r1))
-    m = torch.distributions.uniform.Uniform(r1, r2)
-    labels = m.sample(y_data.shape)
-    loss_generated = bce_gen(y_generated, Variable(torch.zeros_like(y_generated)))
+    #print(Variable(torch.rand(len(y_generated)) * (r2-r1) + r1))
+    labels = torch.distributions.uniform.Uniform(r1, r2).sample(y_data.shape)
+    loss_generated = bce_gen(y_generated, labels)
 
     return loss_data + loss_generated
 
@@ -195,7 +190,7 @@ def generator_loss_fn(y_generated, data_label=0):
         labels = torch.zeros_like(y_generated)
 
     bce = nn.BCEWithLogitsLoss()
-    loss = bce(y_generated, Variable(labels))
+    loss = bce(y_generated, labels)
     return loss
 
 
@@ -219,7 +214,14 @@ def train_batch(
     #  2. Calculate discriminator loss
     #  3. Update discriminator parameters
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    dsc_optimizer.zero_grad()
+    gen_data = gen_model.sample(len(x_data))
+    dsc_gen_data = dsc_model(gen_data)
+    dsc_x_data = dsc_model(x_data)
+    dsc_loss = dsc_loss_fn(dsc_x_data, dsc_gen_data)
+    dsc_loss.backward()
+    dsc_optimizer.step()
+
     # ========================
 
     # TODO: Generator update
@@ -227,7 +229,10 @@ def train_batch(
     #  2. Calculate generator loss
     #  3. Update generator parameters
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    gen_optimizer.zero_grad()
+    gen_loss = gen_loss_fn(dsc_gen_data)
+    gen_loss.backward()
+    gen_optimizer.step()
     # ========================
 
     return dsc_loss.item(), gen_loss.item()
@@ -242,15 +247,20 @@ def save_checkpoint(gen_model, dsc_losses, gen_losses, checkpoint_file):
     :param checkpoint_file: Path without extension to save generator to.
     """
 
-    saved = False
+    saved = True
     checkpoint_file = f"{checkpoint_file}.pt"
 
     # TODO:
     #  Save a checkpoint of the generator model. You can use torch.save().
     #  You should decide what logic to use for deciding when to save.
     #  If you save, set saved to True.
-    # ====== YOUR CODE: ======
-    raise NotImplementedError()
-    # ========================
+
+    if saved:
+        saved_state = dict(
+            #best_acc=best_acc,
+            #ewi=epochs_without_improvement,
+            model_state=gen_model.state_dict(),
+        )
+        torch.save(saved_state, checkpoint_file)
 
     return saved

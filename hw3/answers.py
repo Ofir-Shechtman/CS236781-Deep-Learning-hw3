@@ -163,28 +163,24 @@ An equation: $e^{i\pi} -1 = 0$
 
 PART3_CUSTOM_DATA_URL = None
 
-
 def part3_gan_hyperparams():
     hypers = dict(
-        batch_size=0,
-        z_dim=0,
+        batch_size=53,
+        z_dim=256,
         data_label=0,
-        label_noise=0.0,
+        label_noise=0.2,
         discriminator_optimizer=dict(
-            type="",  # Any name in nn.optim like SGD, Adam
-            lr=0.0,
+            type="Adam",  # Any name in nn.optim like SGD, Adam
+            lr=3e-4,
             # You an add extra args for the optimizer here
         ),
         generator_optimizer=dict(
-            type="",  # Any name in nn.optim like SGD, Adam
-            lr=0.0,
+            type="Adam",  # Any name in nn.optim like SGD, Adam
+            lr=3e-4,
             # You an add extra args for the optimizer here
         ),
     )
     # TODO: Tweak the hyperparameters to train your GAN.
-    # ====== YOUR CODE: ======
-    raise NotImplementedError()
-    # ========================
     return hypers
 
 
