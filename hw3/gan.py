@@ -160,11 +160,11 @@ def discriminator_loss_fn(y_data, y_generated, data_label=0, label_noise=0.0):
     bce_data = nn.BCEWithLogitsLoss()
     bce_gen = nn.BCEWithLogitsLoss()
 
-    loss_data = bce_data(y_data, labels)
+    loss_data = bce_data(y_data, labels.to(device=y_data.device))
     r1, r2 = 0-label_noise, 0+label_noise
     #print(Variable(torch.rand(len(y_generated)) * (r2-r1) + r1))
     labels = torch.distributions.uniform.Uniform(r1, r2).sample(y_data.shape)
-    loss_generated = bce_gen(y_generated, labels)
+    loss_generated = bce_gen(y_generated, labels.to(device=y_generated.device))
 
     return loss_data + loss_generated
 
@@ -190,7 +190,7 @@ def generator_loss_fn(y_generated, data_label=0):
         labels = torch.zeros_like(y_generated)
 
     bce = nn.BCEWithLogitsLoss()
-    loss = bce(y_generated, labels)
+    loss = bce(y_generated, labels.to(device=y_generated.device))
     return loss
 
 
@@ -214,11 +214,9 @@ def train_batch(
     #  2. Calculate discriminator loss
     #  3. Update discriminator parameters
     # ====== YOUR CODE: ======
-    dsc_optimizer.zero_grad()
     gen_data = gen_model.sample(len(x_data))
-    dsc_gen_data = dsc_model(gen_data)
-    dsc_x_data = dsc_model(x_data)
-    dsc_loss = dsc_loss_fn(dsc_x_data, dsc_gen_data)
+    dsc_optimizer.zero_grad()
+    dsc_loss = dsc_loss_fn(dsc_model(x_data), dsc_model(gen_data))
     dsc_loss.backward()
     dsc_optimizer.step()
 
@@ -230,7 +228,7 @@ def train_batch(
     #  3. Update generator parameters
     # ====== YOUR CODE: ======
     gen_optimizer.zero_grad()
-    gen_loss = gen_loss_fn(dsc_gen_data)
+    gen_loss = gen_loss_fn(dsc_model(gen_data))
     gen_loss.backward()
     gen_optimizer.step()
     # ========================
@@ -254,7 +252,6 @@ def save_checkpoint(gen_model, dsc_losses, gen_losses, checkpoint_file):
     #  Save a checkpoint of the generator model. You can use torch.save().
     #  You should decide what logic to use for deciding when to save.
     #  If you save, set saved to True.
-
     if saved:
         saved_state = dict(
             #best_acc=best_acc,
