@@ -60,6 +60,8 @@ class Discriminator(nn.Module):
         return torch.sigmoid(y)
 
 
+ 
+    
 class Generator(nn.Module):
     def __init__(self, z_dim, featuremap_size=4, out_channels=3):
         """
@@ -70,21 +72,30 @@ class Generator(nn.Module):
         """
         super().__init__()
         self.z_dim = z_dim
-        features_shape = torch.Size((256, 8, 8))
-        n_features = torch.FloatTensor(features_shape).numel()
+
 
         # TODO: Create the generator model layers.
         #  To combine image features you can use the DecoderCNN from the VAE
         #  section or implement something new.
         #  You can assume a fixed image size.
-        self.decoder = autoencoder.DecoderCNN(in_channels=features_shape[0], out_channels=out_channels)
-        self.decoder_fc = nn.Sequential(
-            nn.Linear(in_features=z_dim, out_features=n_features, bias=False),  # z_dim, n_features
-            nn.BatchNorm1d(num_features=n_features, momentum=0.9),
-            nn.ReLU(True),
-            autoencoder.Unflatten(features_shape)
+
+        self.decoder = nn.Sequential(
+            # input is Z, going into a convolution
+            nn.ConvTranspose2d(z_dim, z_dim*8, kernel_size=featuremap_size, stride=1, bias=False),
+            nn.BatchNorm2d(z_dim*8),
+            nn.ReLU(),
+            nn.ConvTranspose2d(z_dim*8, z_dim*4, kernel_size=featuremap_size, padding=1, stride=2, bias=False),
+            nn.BatchNorm2d(z_dim*4),
+            nn.ReLU(),
+            nn.ConvTranspose2d(z_dim*4, z_dim*2, kernel_size=featuremap_size, padding=1, stride=2, bias=False),
+            nn.BatchNorm2d(z_dim*2),
+            nn.ReLU(),
+            nn.ConvTranspose2d(z_dim*2, z_dim, kernel_size=featuremap_size, padding=1, stride=2, bias=False),
+            nn.BatchNorm2d(z_dim),
+            nn.ReLU(),
+            nn.ConvTranspose2d(z_dim, out_channels, featuremap_size, 2, 1, bias=False),
+            nn.Tanh()
         )
-        self.eval()
 
     def sample(self, n, with_grad=False):
         """
@@ -116,10 +127,11 @@ class Generator(nn.Module):
         # TODO: Implement the Generator forward pass.
         #  Don't forget to make sure the output instances have the same
         #  dynamic range as the original (real) images.
-        #print(f'z:{z.shape}')
-        h = self.decoder_fc(z)
+        #h = self.decoder_fc(z)
         #print(f'h:{h.shape}')
-        x = self.decoder(h)
+        z = z.unsqueeze(2)
+        z = z.unsqueeze(3)
+        x = self.decoder(z)
         return x
 
 
@@ -142,29 +154,15 @@ def discriminator_loss_fn(y_data, y_generated, data_label=0, label_noise=0.0):
     # TODO:
     #  Implement the discriminator loss.
     #  See pytorch's BCEWithLogitsLoss for a numerically stable implementation.
-    if data_label:
-        if label_noise:
-            r1, r2 = 1-label_noise, 1+label_noise
-            #labels = torch.rand(len(y_data)) * (r2-r1) + r1
-            labels = torch.distributions.uniform.Uniform(r1, r2).sample(y_data.shape)
-        else:
-            labels = torch.ones_like(y_data)
-    else:
-        if label_noise:
-            r1, r2 = 0-label_noise, 0+label_noise
-            #labels = torch.rand(len(y_data)) * (r2-r1) + r1
-            labels = torch.distributions.uniform.Uniform(r1, r2).sample(y_data.shape)
-        else:
-            labels = torch.zeros_like(y_data)
-
-    bce_data = nn.BCEWithLogitsLoss()
-    bce_gen = nn.BCEWithLogitsLoss()
-
-    loss_data = bce_data(y_data, labels.to(device=y_data.device))
-    r1, r2 = 0-label_noise, 0+label_noise
-    #print(Variable(torch.rand(len(y_generated)) * (r2-r1) + r1))
+    bce = nn.BCEWithLogitsLoss()
+    
+    r1, r2 = data_label-label_noise/2, data_label+label_noise/2
     labels = torch.distributions.uniform.Uniform(r1, r2).sample(y_data.shape)
-    loss_generated = bce_gen(y_generated, labels.to(device=y_generated.device))
+    loss_data = bce(y_data, labels.to(device=y_data.device))
+    
+    r1, r2 = 0-label_noise/2, 0+label_noise/2
+    labels = torch.distributions.uniform.Uniform(r1, r2).sample(y_data.shape)
+    loss_generated = bce(y_generated, labels.to(device=y_generated.device))
 
     return loss_data + loss_generated
 
@@ -208,14 +206,18 @@ def train_batch(
     generator.
     :return: The discriminator and generator losses.
     """
+    dsc_model.train(True)
+    gen_model.train(True)
 
     # TODO: Discriminator update
     #  1. Show the discriminator real and generated data
     #  2. Calculate discriminator loss
     #  3. Update discriminator parameters
     # ====== YOUR CODE: ======
-    gen_data = gen_model.sample(len(x_data))
     dsc_optimizer.zero_grad()
+    gen_data = gen_model.sample(len(x_data))
+    
+    
     dsc_loss = dsc_loss_fn(dsc_model(x_data), dsc_model(gen_data))
     dsc_loss.backward()
     dsc_optimizer.step()
@@ -228,6 +230,9 @@ def train_batch(
     #  3. Update generator parameters
     # ====== YOUR CODE: ======
     gen_optimizer.zero_grad()
+    gen_data = gen_model.sample(len(x_data), with_grad=True)
+    
+    
     gen_loss = gen_loss_fn(dsc_model(gen_data))
     gen_loss.backward()
     gen_optimizer.step()
