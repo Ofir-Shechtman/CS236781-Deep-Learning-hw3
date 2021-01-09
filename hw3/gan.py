@@ -162,7 +162,7 @@ def discriminator_loss_fn(y_data, y_generated, data_label=0, label_noise=0.0):
     # TODO:
     #  Implement the discriminator loss.
     #  See pytorch's BCEWithLogitsLoss for a numerically stable implementation.
-    bce = nn.BCEWithLogitsLoss()
+    bce = nn.BCELoss()
     
     r1, r2 = data_label-label_noise/2, data_label+label_noise/2
     labels = torch.distributions.uniform.Uniform(r1, r2).sample(y_data.shape)
@@ -191,12 +191,12 @@ def generator_loss_fn(y_generated, data_label=0):
     #  Think about what you need to compare the input to, in order to
     #  formulate the loss in terms of Binary Cross Entropy.       
     labels = torch.full_like(y_generated, data_label, device=y_generated.device)
-    bce = nn.BCEWithLogitsLoss()
+    bce = nn.BCELoss()
     loss = bce(y_generated, labels)
     return loss
 
 
-def train_batch2(
+def train_batch(
     dsc_model: Discriminator,
     gen_model: Generator,
     dsc_loss_fn: Callable,
@@ -218,7 +218,7 @@ def train_batch2(
     #  2. Calculate discriminator loss
     #  3. Update discriminator parameters
     # ====== YOUR CODE: ======
-    dsc_optimizer.zero_grad()
+    dsc_model.zero_grad()
     gen_data = gen_model.sample(len(x_data))
     
     
@@ -233,7 +233,7 @@ def train_batch2(
     #  2. Calculate generator loss
     #  3. Update generator parameters
     # ====== YOUR CODE: ======
-    gen_optimizer.zero_grad()
+    gen_model.zero_grad()
     gen_data = gen_model.sample(len(x_data), with_grad=True)
     
     
@@ -243,85 +243,6 @@ def train_batch2(
     # ========================
 
     return dsc_loss.item(), gen_loss.item()
-
-
-def train_batch(
-    dsc_model: Discriminator,
-    gen_model: Generator,
-    dsc_loss_fn: Callable,
-    gen_loss_fn: Callable,
-    dsc_optimizer: Optimizer,
-    gen_optimizer: Optimizer,
-    x_data: DataLoader,
-):
-    real_data = x_data #data[0].to(device)
-    netD = dsc_model
-    netG = gen_model
-    optimizerD = dsc_optimizer
-    optimizerG = gen_optimizer
-    criterion = nn.BCELoss()
-    device=x_data.device
-    fixed_noise = torch.randn(64, 100, 1, 1, device=device)
-
-    real_label = 1
-    fake_label = 0
-    # Get batch size. Can be different from params['nbsize'] for last batch in epoch.
-    b_size = real_data.size(0)
-
-    # Make accumalated gradients of the discriminator zero.
-    netD.zero_grad()
-    # Create labels for the real data. (label=1)
-    label = torch.full((b_size, ), real_label, device=device, dtype=real_data.dtype)
-    output = netD(real_data).view(-1)
-    errD_real = criterion(output, label)
-    # Calculate gradients for backpropagation.
-    errD_real.backward()
-    D_x = output.mean().item()
-
-    # Sample random data from a unit normal distribution.
-    noise = torch.randn(b_size, 100, device=device)
-    # Generate fake data (images).
-    fake_data = netG(noise)
-    # Create labels for fake data. (label=0)
-    label.fill_(fake_label  )
-    # Calculate the output of the discriminator of the fake data.
-    # As no gradients w.r.t. the generator parameters are to be
-    # calculated, detach() is used. Hence, only gradients w.r.t. the
-    # discriminator parameters will be calculated.
-    # This is done because the loss functions for the discriminator
-    # and the generator are slightly different.
-    output = netD(fake_data.detach()).view(-1)
-    errD_fake = criterion(output, label)
-    # Calculate gradients for backpropagation.
-    errD_fake.backward()
-    D_G_z1 = output.mean().item()
-
-    # Net discriminator loss.
-    errD = errD_real + errD_fake
-    # Update discriminator parameters.
-    optimizerD.step()
-
-    # Make accumalted gradients of the generator zero.
-    netG.zero_grad()
-    # We want the fake data to be classified as real. Hence
-    # real_label are used. (label=1)
-    label.fill_(real_label)
-    # No detach() is used here as we want to calculate the gradients w.r.t.
-    # the generator this time.
-    output = netD(fake_data).view(-1)
-    errG = criterion(output, label)
-    # Gradients for backpropagation are calculated.
-    # Gradients w.r.t. both the generator and the discriminator
-    # parameters are calculated, however, the generator's optimizer
-    # will only update the parameters of the generator. The discriminator
-    # gradients will be set to zero in the next iteration by netD.zero_grad()
-    errG.backward()
-
-    D_G_z2 = output.mean().item()
-    # Update generator parameters.
-    optimizerG.step()
-    
-    return errD.item(), errG.item()
 
 
 
